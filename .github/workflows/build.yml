@@ -1,0 +1,106 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android Project
+        run: |
+          mkdir -p app/src/main/java/com/example/tavernapp
+          mkdir -p app/src/main/res/values
+          
+          # 检查你的代码文件是否存在并移动它
+          if [ -f "MainActivity.kt" ]; then
+            cp MainActivity.kt app/src/main/java/com/example/tavernapp/MainActivity.kt
+          else
+            echo "错误：找不到 MainActivity.kt 文件！请检查你的文件名拼写是否正确（注意大小写）。"
+            exit 1
+          fi
+          
+          # 生成修复版底层配置
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          EOF
+          
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name = "TavernApp"
+          include(":app")
+          EOF
+          
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.2.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.20" apply false
+          }
+          EOF
+          
+          cat << 'EOF' > app/build.gradle.kts
+          plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+          android {
+              namespace = "com.example.tavernapp"
+              compileSdk = 34
+              defaultConfig { applicationId = "com.example.tavernapp"; minSdk = 24; targetSdk = 34; versionCode = 1; versionName = "1.0" }
+              buildFeatures { compose = true }
+              composeOptions { kotlinCompilerExtensionVersion = "1.5.4" }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:1.6.2")
+              implementation("androidx.activity:activity-compose:1.8.1")
+              implementation(platform("androidx.compose:compose-bom:2023.10.01"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.animation:animation")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.navigation:navigation-compose:2.7.7")
+              implementation("com.google.code.gson:gson:2.10.1")
+              implementation("com.squareup.okhttp3:okhttp:4.12.0")
+              implementation("io.coil-kt:coil-compose:2.5.0")
+              implementation("io.noties.markwon:core:4.6.2")
+              implementation("io.noties.markwon:html:4.6.2")
+          }
+          EOF
+          
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+              <application android:allowBackup="true" android:label="酒馆" android:supportsRtl="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+      - name: Build APK (开始编译打包)
+        run: |
+          gradle wrapper --gradle-version 8.4
+          ./gradlew assembleDebug
+
+      - name: Upload APK (上传打包好的软件)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TavernApp-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
